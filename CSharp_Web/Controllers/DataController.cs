@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using System.Runtime.Serialization.Json;
-using CSharp_Web.Models;
 using System.IO;
-using System.Text;
+using CSharp_Web.Models;
+using CSharp_Web.Serial;
+using System.Threading.Tasks;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -14,7 +15,9 @@ namespace CSharp_Web.Controllers
     [Route("api/[controller]")]
     public class DataController : Controller
     {
+        public MyPort myPort = new MyPort();
         private readonly DataContext _context;
+        List<Data> saveData = new List<Data>();
 
         public DataController(DataContext context)
         {
@@ -66,6 +69,17 @@ namespace CSharp_Web.Controllers
             }
             _context.Datas.Add(data);
             _context.SaveChanges();
+            myPort.WriteLED(data.Red, data.Green, data.Yellow, data.Blue, data.White);
+            if (data.Temperature == -1 && data.Light == -1)
+            {
+                saveData.Clear();
+                Read(data);
+                FileStream fs = new FileStream("D:\\temp\\save.json", FileMode.Open);
+                DataContractJsonSerializer ser = new DataContractJsonSerializer(typeof(List<Data>));
+                ser.WriteObject(fs, saveData);
+                fs.Close();
+            }
+            myPort.Close();
             return CreatedAtRoute("GetData", new { id = data.ID }, data);
         }
 
@@ -112,6 +126,25 @@ namespace CSharp_Web.Controllers
             _context.Datas.Remove(data);
             _context.SaveChanges();
             return new NoContentResult();
+        }
+
+        public Task<Data> ReadData(int id)
+        {
+            Data tempData = new Data();
+            return Task.Run(() => 
+            {
+                tempData = myPort.GetData(id);
+                return tempData;
+            });
+        }
+
+        public async void Read(Data data)
+        {
+            for (int i = 0; i < int.Parse(data.Recv); i++)
+            {
+                Data tempData = await ReadData(data.ID + i +1);
+                saveData.Add(tempData);
+            }
         }
     }
 }
